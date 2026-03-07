@@ -18,9 +18,7 @@ public class HttpAdapter {
         String path = exchange.getRequestURI().getPath();
 
         Map<String, String> headers = new HashMap<>();
-        exchange.getRequestHeaders().forEach((key, value) -> {
-            headers.put(key, value.get(0));
-        });
+        exchange.getRequestHeaders().forEach((key, value) -> headers.put(key, value.get(0)));
 
         String body = readBody(exchange.getRequestBody());
 
