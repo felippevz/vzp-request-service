@@ -35,9 +35,7 @@ public class RequestServer {
 
         } catch (IOException exception) {
 
-
-            exception.printStackTrace();
-            //treat error later
+            //todo: treat error later
         }
     }
 }
