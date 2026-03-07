@@ -24,7 +24,7 @@ public class HttpAdapter {
 
         String body = readBody(exchange.getRequestBody());
 
-        return new HttpRequest(method, path, headers, body);
+        return new HttpRequest(method, path, headers, body, exchange);
     }
 
     private static String readBody(InputStream inputStream) throws IOException {
