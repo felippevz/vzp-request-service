@@ -78,7 +78,7 @@ public class RequestHandler implements HttpHandler {
         if (match == null) {
 
             //todo: treat error later
-            new HttpResponse().send(exchange);
+            new HttpResponse().send(request);
             return;
         }
 
@@ -106,12 +106,12 @@ public class RequestHandler implements HttpHandler {
 
 
             //todo: treat error later
-            new HttpResponse().send(exchange);
+            new HttpResponse().send(request);
 
         } catch (Exception e) {
 
             //todo: treat error later
-            new HttpResponse().send(exchange);
+            new HttpResponse().send(request);
         }
     }
 
