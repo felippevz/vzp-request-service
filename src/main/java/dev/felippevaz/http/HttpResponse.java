@@ -13,12 +13,12 @@ public class HttpResponse {
     private static final Gson GSON = new Gson();
 
     private int status = 200;
-    private Map<String, String> body = new HashMap<>();
+    private final Map<String, String> body = new HashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private boolean sent = false;
 
     public HttpResponse() {
-        this.addHeader("Content-Type", "application/json");
+        this.setHeader("Content-Type", "application/json");
         this.body.put("timestamp", "" + System.currentTimeMillis());
     }
 
@@ -27,34 +27,45 @@ public class HttpResponse {
         return this;
     }
 
-    public HttpResponse setBody(Map<String, String> body) {
-        this.body = body;
+    public void clearFields() {
+        this.body.clear();
+    }
+
+    public HttpResponse addFieldBody(String key, String value) {
+        this.body.put(key, value);
         return this;
     }
 
-    public HttpResponse addHeader(String key, String value) {
+    public HttpResponse setHeader(String key, String value) {
         this.headers.put(key, value);
         return this;
     }
 
-    public void send(HttpExchange exchange) throws IOException {
+    public void send(HttpRequest request) {
 
         if(this.sent)
             return;
 
         this.headers.forEach((k, v) ->
-                exchange.getResponseHeaders().add(k, v)
+                request.getExchange().getResponseHeaders().add(k, v)
         );
 
         String json = GSON.toJson(body);
 
         byte[] bytes = json.getBytes();
 
-        exchange.sendResponseHeaders(this.status, bytes.length);
+        try {
 
-        OutputStream outputStream = exchange.getResponseBody();
-        outputStream.write(bytes);
-        outputStream.close();
+            request.getExchange().sendResponseHeaders(this.status, bytes.length);
+
+            OutputStream outputStream = request.getExchange().getResponseBody();
+            outputStream.write(bytes);
+            outputStream.close();
+
+        } catch (IOException exception) {
+
+            //todo: treat error later
+        }
 
         sent = true;
     }
