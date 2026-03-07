@@ -64,3 +64,39 @@ public class Main {
 
 ````
 
+## How to send HttpResponse
+
+Create HttpResponse
+
+````java
+
+import dev.felippevaz.annotations.Get;
+import dev.felippevaz.http.HttpRequest;
+import dev.felippevaz.http.HttpResponse;
+
+@Get
+public void genericGet(HttpRequest request) {
+
+    HttpResponse response = new HttpResponse();
+
+    response.clearFields(); // <- By default, the "timestamp" field is already created
+
+    response.setStatus(200)
+            .setHeader("Content-Type", "application/json") // <- By default, the "application/json" context is already added
+            .addFieldBody("field", "value")
+            .addFieldBody("message", "the response was created"); // <- create as many fields as you want.
+
+    response.send(request); // <- Response sent successfully!
+    
+}
+
+````
+
+The JSON result:
+
+````json
+{
+    "field": "value",
+    "message": "the response was created"
+}
+````
