@@ -13,7 +13,7 @@ public class HttpResponse {
     private static final Gson GSON = new Gson();
 
     private int status = 200;
-    private final Map<String, String> body = new HashMap<>();
+    private Map<String, String> body = new HashMap<>();
     private final Map<String, String> headers = new HashMap<>();
     private boolean sent = false;
 
@@ -27,8 +27,8 @@ public class HttpResponse {
         return this;
     }
 
-    public HttpResponse addBody(String name, String message) {
-        this.body.put(name, message);
+    public HttpResponse setBody(Map<String, String> body) {
+        this.body = body;
         return this;
     }
 
@@ -41,8 +41,6 @@ public class HttpResponse {
 
         if(this.sent)
             return;
-
-        System.out.println(this.headers.get("Content-Type"));
 
         this.headers.forEach((k, v) ->
                 exchange.getResponseHeaders().add(k, v)
