@@ -92,7 +92,7 @@ public void genericGet(HttpRequest request) {
 
 ````
 
-The JSON result:
+JSON response:
 
 ````json
 {
