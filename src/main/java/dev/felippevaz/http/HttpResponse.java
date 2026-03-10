@@ -1,7 +1,6 @@
 package dev.felippevaz.http;
 
 import com.google.gson.Gson;
-import com.sun.net.httpserver.HttpExchange;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -54,13 +53,12 @@ public class HttpResponse {
 
         byte[] bytes = json.getBytes();
 
-        try {
+
+        try(OutputStream outputStream = request.getExchange().getResponseBody()) {
 
             request.getExchange().sendResponseHeaders(this.status, bytes.length);
 
-            OutputStream outputStream = request.getExchange().getResponseBody();
             outputStream.write(bytes);
-            outputStream.close();
 
         } catch (IOException exception) {
 
