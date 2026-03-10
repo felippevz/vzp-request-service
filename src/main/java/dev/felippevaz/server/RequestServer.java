@@ -1,16 +1,16 @@
 package dev.felippevaz.server;
 
 import com.sun.net.httpserver.HttpsConfigurator;
-import com.sun.net.httpserver.HttpsParameters;
 import com.sun.net.httpserver.HttpsServer;
+import dev.felippevaz.exceptions.Errors;
+import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.handler.RequestHandler;
 import dev.felippevaz.router.Router;
 
 import javax.net.ssl.*;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.security.KeyStore;
-import java.security.SecureRandom;
+import java.security.*;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
@@ -28,7 +28,7 @@ public class RequestServer {
         this.backLog = 0;
         this.requestHandler = new RequestHandler(new Router());
         this.executor = Executors.newFixedThreadPool(1);
-        this.sslContext = createDefaultSSLContext();
+        this.sslContext = getDefaultSSLContext();
         this.configurator = new HttpsConfigurator(this.sslContext);
     }
 
@@ -45,15 +45,13 @@ public class RequestServer {
             server.setHttpsConfigurator(this.configurator);
 
             server.setExecutor(this.executor);
-            server.createContext("/", requestHandler);
+            server.createContext("/", this.requestHandler);
 
             server.start();
 
         } catch (IOException exception) {
 
-            //todo: treat error later
-
-            throw new RuntimeException(exception);
+            throw new ApplicationException(Errors.SERVER_INIT_ERROR, exception);
         }
     }
 
@@ -77,7 +75,7 @@ public class RequestServer {
         return this.port;
     }
 
-    private SSLContext createDefaultSSLContext() {
+    private SSLContext getDefaultSSLContext() {
 
         SSLContext context;
 
@@ -100,11 +98,8 @@ public class RequestServer {
 
             return context;
 
-        } catch (Exception exception) {
-
-            //todo: treat error later
-
-            throw new RuntimeException(exception);
+        } catch (Exception e){
+            throw new RuntimeException("error in certificate");
         }
     }
 }
