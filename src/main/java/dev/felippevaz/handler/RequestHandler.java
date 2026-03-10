@@ -3,15 +3,17 @@ package dev.felippevaz.handler;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import dev.felippevaz.annotations.*;
+import dev.felippevaz.exceptions.ApplicationException;
+import dev.felippevaz.exceptions.Errors;
 import dev.felippevaz.http.HttpAdapter;
 import dev.felippevaz.http.HttpRequest;
-import dev.felippevaz.http.HttpResponse;
 import dev.felippevaz.router.Route;
 import dev.felippevaz.router.RouteMatch;
 import dev.felippevaz.router.Router;
 
 import java.io.IOException;
 import java.lang.annotation.Annotation;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
 import java.util.HashMap;
@@ -60,8 +62,8 @@ public class RequestHandler implements HttpHandler {
                         Route route = new Route(httpMethods.get(entry), regexPath, fullPath, controller, method);
                         this.router.registerRoute(route);
 
-                    } catch (Exception e) {
-                        //todo: treat error later
+                    } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException exception) {
+                        throw new ApplicationException(Errors.VALUE_METHOD_CONTROLLER_ERROR, exception);
                     }
                 }
             }
@@ -77,8 +79,7 @@ public class RequestHandler implements HttpHandler {
 
         if (match == null) {
 
-            //todo: treat error later
-            new HttpResponse().send(request);
+            HttpAdapter.send(Errors.ROUTE_NOT_FOUND, request);
             return;
         }
 
@@ -104,14 +105,10 @@ public class RequestHandler implements HttpHandler {
             else
                 method.invoke(controller, args);
 
+            HttpAdapter.ok(request);
 
-            //todo: treat error later
-            new HttpResponse().send(request);
-
-        } catch (Exception e) {
-
-            //todo: treat error later
-            new HttpResponse().send(request);
+        } catch (IllegalAccessException | InvocationTargetException exception) {
+            throw new ApplicationException(Errors.METHOD_INVOKE_ERROR, exception);
         }
     }
 
