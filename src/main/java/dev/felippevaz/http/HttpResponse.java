@@ -1,6 +1,8 @@
 package dev.felippevaz.http;
 
 import com.google.gson.Gson;
+import dev.felippevaz.exceptions.ApplicationException;
+import dev.felippevaz.exceptions.Errors;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -45,6 +47,17 @@ public class HttpResponse {
         if(this.sent)
             return;
 
+        if(body.isEmpty()) {
+            try {
+
+                request.getExchange().sendResponseHeaders(this.status, -1);
+                return;
+
+            } catch (IOException exception) {
+                throw new ApplicationException(Errors.RESPONSE_SEND_ERROR, exception);
+            }
+        }
+
         this.headers.forEach((k, v) ->
                 request.getExchange().getResponseHeaders().add(k, v)
         );
@@ -61,8 +74,7 @@ public class HttpResponse {
             outputStream.write(bytes);
 
         } catch (IOException exception) {
-
-            //todo: treat error later
+            throw new ApplicationException(Errors.RESPONSE_SEND_ERROR, exception);
         }
 
         sent = true;
