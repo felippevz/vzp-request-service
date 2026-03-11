@@ -7,6 +7,7 @@ import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 import dev.felippevaz.http.HttpAdapter;
 import dev.felippevaz.http.HttpRequest;
+import dev.felippevaz.http.HttpUtils;
 import dev.felippevaz.router.Route;
 import dev.felippevaz.router.RouteMatch;
 import dev.felippevaz.router.Router;
@@ -79,7 +80,7 @@ public class RequestHandler implements HttpHandler {
 
         if (match == null) {
 
-            HttpAdapter.send(Errors.ROUTE_NOT_FOUND, request);
+            HttpUtils.send(Errors.ROUTE_NOT_FOUND, request);
             return;
         }
 
@@ -105,7 +106,7 @@ public class RequestHandler implements HttpHandler {
             else
                 method.invoke(controller, args);
 
-            HttpAdapter.ok(request);
+            HttpUtils.ok(request);
 
         } catch (IllegalAccessException | InvocationTargetException exception) {
             throw new ApplicationException(Errors.METHOD_INVOKE_ERROR, exception);
