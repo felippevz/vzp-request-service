@@ -12,13 +12,16 @@ public class HttpRequest {
     private final String body;
     private final HttpExchange exchange;
 
-
     public HttpRequest(String method, String path, Map<String, String> headers, String body, HttpExchange exchange) {
         this.method = method;
         this.path = path;
         this.headers = headers;
         this.body = body;
         this.exchange = exchange;
+    }
+
+    public <T> T getObjectBody(Class<T> objectClass) {
+        return HttpUtils.GSON.fromJson(this.body, objectClass);
     }
 
     public String getMethod() {
