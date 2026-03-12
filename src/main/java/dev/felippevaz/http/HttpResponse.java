@@ -76,7 +76,7 @@ public class HttpResponse {
                 request.getExchange().getResponseHeaders().add(k, v)
         );
 
-        String json = body.getAsString();
+        String json = HttpUtils.GSON.toJson(body);
 
         byte[] bytes = json.getBytes();
 
