@@ -1,6 +1,5 @@
 package dev.felippevaz.http;
 
-import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
@@ -12,8 +11,6 @@ import java.util.List;
 import java.util.Map;
 
 public class HttpResponse {
-
-    private static final Gson GSON = new Gson();
 
     private int status = 200;
     private JsonObject body = new JsonObject();
@@ -50,12 +47,12 @@ public class HttpResponse {
     }
 
     public HttpResponse addObject(String property, Object object) {
-        this.body.add(property, GSON.toJsonTree(object));
+        this.body.add(property, HttpUtils.GSON.toJsonTree(object));
         return this;
     }
 
     public HttpResponse addListObjects(String property, List<Object> objects) {
-        this.body.add(property, GSON.toJsonTree(objects));
+        this.body.add(property, HttpUtils.GSON.toJsonTree(objects));
         return this;
     }
 

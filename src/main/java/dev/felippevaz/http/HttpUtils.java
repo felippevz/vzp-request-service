@@ -1,8 +1,11 @@
 package dev.felippevaz.http;
 
+import com.google.gson.Gson;
 import dev.felippevaz.exceptions.Errors;
 
 public class HttpUtils {
+
+    public static final Gson GSON = new Gson();
 
     public static void ok(HttpRequest request) {
 
