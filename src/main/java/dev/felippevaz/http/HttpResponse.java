@@ -49,13 +49,13 @@ public class HttpResponse {
         return this;
     }
 
-    public HttpResponse addObject(Object object) {
-        this.body.add("", GSON.toJsonTree(object));
+    public HttpResponse addObject(String property, Object object) {
+        this.body.add(property, GSON.toJsonTree(object));
         return this;
     }
 
-    public HttpResponse addListObjects(List<Object> objects) {
-        this.body.add("", GSON.toJsonTree(objects));
+    public HttpResponse addListObjects(String property, List<Object> objects) {
+        this.body.add(property, GSON.toJsonTree(objects));
         return this;
     }
 
