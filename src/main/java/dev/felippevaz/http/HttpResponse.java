@@ -1,12 +1,14 @@
 package dev.felippevaz.http;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class HttpResponse {
@@ -14,13 +16,13 @@ public class HttpResponse {
     private static final Gson GSON = new Gson();
 
     private int status = 200;
-    private final Map<String, String> body = new HashMap<>();
+    private JsonObject body = new JsonObject();
     private final Map<String, String> headers = new HashMap<>();
     private boolean sent = false;
 
     public HttpResponse() {
         this.setHeader("Content-Type", "application/json");
-        this.body.put("timestamp", "" + System.currentTimeMillis());
+        this.body.addProperty("timestamp", System.currentTimeMillis());
     }
 
     public HttpResponse setStatus(int status) {
@@ -29,16 +31,31 @@ public class HttpResponse {
     }
 
     public void clearFields() {
-        this.body.clear();
+        this.body = new JsonObject();
+    }
+
+    public HttpResponse setBody(JsonObject jsonObject) {
+        this.body = jsonObject;
+        return this;
     }
 
     public HttpResponse addFieldBody(String key, String value) {
-        this.body.put(key, value);
+        this.body.addProperty(key, value);
         return this;
     }
 
     public HttpResponse setHeader(String key, String value) {
         this.headers.put(key, value);
+        return this;
+    }
+
+    public HttpResponse addObject(Object object) {
+        this.body.add("", GSON.toJsonTree(object));
+        return this;
+    }
+
+    public HttpResponse addListObjects(List<Object> objects) {
+        this.body.add("", GSON.toJsonTree(objects));
         return this;
     }
 
@@ -62,10 +79,9 @@ public class HttpResponse {
                 request.getExchange().getResponseHeaders().add(k, v)
         );
 
-        String json = GSON.toJson(body);
+        String json = body.getAsString();
 
         byte[] bytes = json.getBytes();
-
 
         try(OutputStream outputStream = request.getExchange().getResponseBody()) {
 
