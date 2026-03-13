@@ -1,8 +1,16 @@
 package dev.felippevaz.repositories;
 
+import io.github.classgraph.ClassGraph;
+import io.github.classgraph.ClassInfo;
+import io.github.classgraph.ScanResult;
+import org.hibernate.SessionFactory;
+import org.hibernate.boot.MetadataSources;
+import org.hibernate.boot.registry.StandardServiceRegistry;
+import org.hibernate.boot.registry.StandardServiceRegistryBuilder;
+
+import javax.persistence.Entity;
 import javax.persistence.EntityManager;
 import javax.persistence.EntityManagerFactory;
-import javax.persistence.Persistence;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -15,7 +23,30 @@ public class PersistenceManagerFactory {
     }
 
     public static void init(Map<String, String> properties) {
-        entityManagerFactory = Persistence.createEntityManagerFactory("default", properties);
+
+        StandardServiceRegistry registry = new StandardServiceRegistryBuilder()
+                .applySettings(properties)
+                .build();
+
+        MetadataSources metadataSources = new MetadataSources(registry);
+
+        try (ScanResult scanResult = new ClassGraph()
+                .enableClassInfo()
+                .enableAnnotationInfo()
+                .scan()) {
+
+            for (ClassInfo classInfo :
+                    scanResult.getClassesWithAnnotation(Entity.class.getName())) {
+
+                Class<?> entityClass = classInfo.loadClass();
+                metadataSources.addAnnotatedClass(entityClass);
+            }
+        }
+
+        try (SessionFactory sessionFactory = metadataSources.buildMetadata().buildSessionFactory()) {
+
+            entityManagerFactory = sessionFactory.unwrap(EntityManagerFactory.class);
+        }
     }
 
     private static Map<String, String> defaultConfig() {
