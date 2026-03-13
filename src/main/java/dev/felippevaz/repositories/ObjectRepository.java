@@ -1,9 +1,12 @@
 package dev.felippevaz.repositories;
 
-import org.springframework.beans.BeanUtils;
+import org.modelmapper.ModelMapper;
 
 import javax.persistence.EntityManager;
 import javax.persistence.EntityNotFoundException;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 
@@ -27,17 +30,37 @@ public abstract class ObjectRepository<T, ID> {
         return entityManager.find(entityClass, id);
     }
 
-    public T update(Long id, T updatedEntity) {
-
+    public T update(Long id, T updatedEntity, String ignore) {
 
         entityManager.getTransaction().begin();
 
         T entity = entityManager.find(entityClass, id);
 
         if(entity == null)
+            //todo: treat error later
             throw new EntityNotFoundException();
 
-        BeanUtils.copyProperties(updatedEntity, entity, "id");
+        Class<?> classEntity = entity.getClass();
+
+        for(Field field : classEntity.getDeclaredFields()) {
+
+            if(Modifier.isStatic(field.getModifiers()))
+                continue;
+
+            if(field.getName().equals(ignore))
+                continue;
+
+            field.setAccessible(true);
+
+            try {
+
+                Object value = field.get(updatedEntity);
+                field.set(entity, value);
+
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            }
+        }
 
         entityManager.getTransaction().commit();
 
