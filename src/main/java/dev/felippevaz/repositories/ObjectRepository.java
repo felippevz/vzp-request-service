@@ -1,6 +1,9 @@
 package dev.felippevaz.repositories;
 
+import org.springframework.beans.BeanUtils;
+
 import javax.persistence.EntityManager;
+import javax.persistence.EntityNotFoundException;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 
@@ -22,6 +25,23 @@ public abstract class ObjectRepository<T, ID> {
 
     public T findById(ID id) {
         return entityManager.find(entityClass, id);
+    }
+
+    public T update(Long id, T updatedEntity) {
+
+
+        entityManager.getTransaction().begin();
+
+        T entity = entityManager.find(entityClass, id);
+
+        if(entity == null)
+            throw new EntityNotFoundException();
+
+        BeanUtils.copyProperties(updatedEntity, entity, "id");
+
+        entityManager.getTransaction().commit();
+
+        return entity;
     }
 
     public T save(T entity) {
