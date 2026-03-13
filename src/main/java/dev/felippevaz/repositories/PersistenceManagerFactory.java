@@ -43,19 +43,18 @@ public class PersistenceManagerFactory {
             }
         }
 
-        try (SessionFactory sessionFactory = metadataSources.buildMetadata().buildSessionFactory()) {
+        SessionFactory sessionFactory = metadataSources.buildMetadata().buildSessionFactory();
 
-            entityManagerFactory = sessionFactory.unwrap(EntityManagerFactory.class);
-        }
+        entityManagerFactory = sessionFactory.unwrap(EntityManagerFactory.class);
     }
 
     private static Map<String, String> defaultConfig() {
         Map<String, String> props = new HashMap<>();
 
-        props.put("javax.persistence.jdbc.url", "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1");
-        props.put("javax.persistence.jdbc.driver", "org.h2.Driver");
-        props.put("javax.persistence.jdbc.user", "sa");
-        props.put("javax.persistence.jdbc.password", "");
+        props.put("hibernate.connection.driver_class", "org.h2.Driver");
+        props.put("hibernate.connection.url", "jdbc:h2:mem:test;DB_CLOSE_DELAY=-1");
+        props.put("hibernate.connection.username", "sa");
+        props.put("hibernate.connection.password", "");
 
         props.put("hibernate.dialect", "org.hibernate.dialect.H2Dialect");
         props.put("hibernate.hbm2ddl.auto", "update");
