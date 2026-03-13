@@ -1,107 +1,248 @@
-# Request Server
+# 🌐 Request Service
 
-This project was developed with a focus on low operational cost, fast startup times, and architectural simplicity. The application is designed to handle low traffic volumes (approximately 100 to 300 requests per day). Therefore, a lightweight approach based on HttpsServer was adopted, avoiding full-blown frameworks like Spring Boot, which would introduce higher startup overhead and unnecessary complexity for this use case.
+**VZP Request Service** é um framework HTTP leve para Java baseado em `HttpsServer`.
 
-> Could be a **webhook endpoint** and request data
+Ele foi criado para oferecer uma alternativa **simples e com inicialização extremamente rápida** em comparação com frameworks mais pesados como Spring Boot.
 
-## How to use
+O objetivo principal é atender **APIs pequenas ou serviços internos com baixo volume de requisições**, mantendo o consumo de memória baixo e a configuração simples.
 
-Create class @Controller
+O projeto foi desenvolvido para funcionar desde **Java 8 até as versões mais modernas do Java**.
 
-````java
+---
 
-@Controller("/path") //<--- Edit '/path' for anyway
-public class GenericController {
+## Características
 
-    @Get
-    public void genericGet() {
-        //Implement yours services here
-    }
+* Inicialização rápida
+* Baixo consumo de memória
+* Baseado em `HttpsServer` da própria JDK
+* Controllers baseados em anotações
+* Mapeamento automático de rotas
+* Suporte a JSON
+* Integração com JPA / Hibernate
+* Banco embarcado com H2
+* Scanning automático de classes
+* Compatível com **Java 8 até versões atuais**
 
-    @Post
-    public void genericPost() {
-        //Implement yours services here
-    }
+---
 
-    @Get("/{id}")
-    public void genericGetId(String id) {
-        //Implement yours services here
-    }
+## Instalação
 
-    @Post("/example/{id}/{name}")
-    public void genericPostId(String id, String name) {
-        //Implement yours services here
-    }
+O projeto é distribuído através do **JitPack**.
+
+Adicione o repositório:
+
+```xml
+<repositories>
+    <repository>
+        <id>jitpack.io</id>
+        <url>https://jitpack.io</url>
+    </repository>
+</repositories>
+```
+
+Adicione a dependência:
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.github.felippevz</groupId>
+        <artifactId>vzp-request-service</artifactId>
+        <version>master-SNAPSHOT</version>
+    </dependency>
+</dependencies>
+```
+
+---
+
+## Inicialização do servidor
+
+Exemplo básico de inicialização do servidor:
+
+```java
+//Criando objeto RequestServer com porta 8080
+RequestServer server = new RequestServer(8080);
+
+//Configurações do servidor  
+server.setExecutor(Executors.newFixedThreadPool(15)); //<-- Use qualquer Executor (default: newFixedThreadPool(1))
+server.setBackLog(1024); //<-- BackLog de requisições (default: 0)
+server.setHttpsConfigurator(new HttpsConfigurator(SSLContext)); //<-- Use suas configurações Https
+
+//Banco de dados 
+PersistenceManagerFactory.init(properties); //<-- Adicionar as propriedades de um banco (default: H2)
+
+//Criando controller
+ProductRepository repository = new ProductRepository();
+ProductService service = new ProductService(repository);
+ProductController controller = new ProductController(service);
+
+//Registrando Controller
+server.registerController(controller);
+
+//Iniciando servidor
+server.start();
+```
+
+### Veja um CRUD simples em:
+
+-> [CRUD request service](https://github.com/felippevz/vzp-request-service-crud)
+
+---
+
+## Controllers
+
+Os controllers são definidos utilizando a anotação `@Controller`.
+
+```java
+@Controller("/generic")
+public class genericController {
+
 }
+```
 
-````
+Essa anotação define o **endpoint base** do controller.
 
-Create your RequestServer!
+---
 
-````java
+## Métodos HTTP suportados
 
-import dev.felippevaz.server.RequestServer;
+Os endpoints podem ser definidos utilizando anotações:
 
-public class Main {
+* `@Get`
+* `@Post`
+* `@Put`
+* `@Patch`
+* `@Delete`
 
-    static void main() {
+---
 
-        //Create object RequestServer
-        RequestServer server = new RequestServer(8080); //<-- Edit server port for anyway
+## Exemplos de endpoints
 
-        //Security Setup
-        server.setExecutor(Executors.EXECUTOR); //<-- Single-threaded default executor
-        server.setBackLog(backLog); //<-- Default backlog set to 0 (will use the system default)
-        server.setHttpsConfigurator(httpsConfigurator); // <-- WARNING: HttpsConfiguration has no default value.
-        
-        //Register yours Controllers
-        server.registerController(new GenericController());
-        server.registerController(new ExampleController());
+### Criar recurso
 
-        //Starter Server HTTP!
-        server.start();
-    }
-}
-
-````
-
-## How to send HttpResponse
-
-Create HttpResponse
-
-````java
-
-@Get
-public void genericGet(HttpRequest request) {
-
-    HttpResponse response = new HttpResponse();
-
-    response.clearFields(); // <- By default, the "timestamp" field is already created
-
-    response.setStatus(200)
-            .setHeader("Content-Type", "application/json") // <- By default, the "application/json" context is already added
-            .addFieldBody("field", "value")
-            .addFieldBody("message", "the response was created"); // <- create as many fields as you want.
-
-    response.send(request); // <- Response sent successfully!
+```java
+@Post
+public void create(HttpRequest request) {
 
 }
+```
 
-````
+### Buscar por ID
 
-JSON response:
+```java
+@Get("/{id}")
+public void read(HttpRequest request, String id) {
 
-````json
-{
-  "field": "value",
-  "message": "the response was created"
 }
-````
+```
 
-Sending an empty HttpResponse
+O framework resolve automaticamente parâmetros de rota como `{id}`.
 
-`````java
+---
 
-HttpUtils.ok(request); //<-- If no response is defined within the called method, this default response will be returned.
+## Camada de repositório
 
-`````
+A persistência pode ser implementada estendendo `ObjectRepository`.
+
+```java
+public class ProductRepository extends ObjectRepository<Product, Long> {
+
+}
+```
+
+Esse repositório genérico permite implementar facilmente operações de banco de dados utilizando **Hibernate / JPA**.
+
+---
+
+## Estrutura recomendada
+
+A arquitetura sugerida segue um padrão simples em camadas:
+
+```
+Controller
+   ↓
+Service
+   ↓
+Repository
+   ↓
+Banco de dados
+```
+
+Exemplo:
+
+```
+ProductController
+ProductService
+ProductRepository
+Product (model)
+```
+
+---
+
+## Casos de uso
+
+O VZP Request Service é ideal para:
+
+* APIs internas
+* microserviços simples
+* ferramentas administrativas
+* automações
+* serviços com **baixo volume de requisições**
+* aplicações onde **Spring Boot seria excessivo**
+
+---
+
+## Compatibilidade Java
+
+O projeto foi desenvolvido para funcionar em:
+
+* Java 8
+* Java 11
+* Java 17
+* Java 21+
+* versões mais recentes da JVM
+
+---
+
+## 🚀 Tecnologias utilizadas
+
+Internamente o projeto utiliza as seguintes bibliotecas:
+
+```xml
+<dependencies>
+    <dependency>
+        <groupId>com.google.code.gson</groupId>
+        <artifactId>gson</artifactId>
+        <version>2.10.1</version>
+    </dependency>
+
+    <dependency>
+        <groupId>jakarta.persistence</groupId>
+        <artifactId>jakarta.persistence-api</artifactId>
+        <version>2.2.3</version>
+    </dependency>
+
+    <dependency>
+        <groupId>org.hibernate</groupId>
+        <artifactId>hibernate-core</artifactId>
+        <version>5.6.15.Final</version>
+    </dependency>
+
+    <dependency>
+        <groupId>io.github.classgraph</groupId>
+        <artifactId>classgraph</artifactId>
+        <version>4.8.165</version>
+    </dependency>
+
+    <dependency>
+        <groupId>com.h2database</groupId>
+        <artifactId>h2</artifactId>
+        <version>2.2.220</version>
+    </dependency>
+</dependencies>
+```
+
+
+
+# Licença
+
+MIT License
