@@ -1,7 +1,6 @@
 package dev.felippevaz.repositories;
 
-import jakarta.persistence.EntityManager;
-
+import javax.persistence.EntityManager;
 import java.lang.reflect.ParameterizedType;
 import java.util.List;
 
