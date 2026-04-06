@@ -6,6 +6,7 @@ public enum Errors {
     VALUE_METHOD_CONTROLLER_ERROR("Error when invoking value method", "ERROR_1002"),
     RESPONSE_SEND_ERROR("Unable to establish contact with the requester", "ERROR_1003"),
     METHOD_INVOKE_ERROR("Error when trying to invoke the method", "ERROR_1004"),
+    ID_NOT_FOUND("Any @Id found in Entity Repository", "ERROR_1005"),
 
     ROUTE_NOT_FOUND("Route not found", 404);
 
