@@ -1,37 +1,35 @@
 package dev.felippevaz.repositories;
 
-import javax.persistence.EntityManager;
+import dev.felippevaz.exceptions.ApplicationException;
+import dev.felippevaz.exceptions.Errors;
+import dev.felippevaz.exceptions.GlobalException;
+
 import javax.persistence.EntityNotFoundException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.ParameterizedType;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 public abstract class ObjectRepository<T, ID> {
 
-    protected EntityManager entityManager;
-    private final Class<T> entityClass;
+    protected final HashMap<ID, T> entityManager;
 
-    @SuppressWarnings("unchecked")
     public ObjectRepository() {
-        this.entityManager = PersistenceManagerFactory.getEntityManager();
-        this.entityClass = (Class<T>) ((ParameterizedType) getClass().getGenericSuperclass()).getActualTypeArguments()[0];
+        this.entityManager = new HashMap<>();
     }
 
     public List<T> findAll() {
-        String jpql = "SELECT e FROM " + entityClass.getSimpleName() + " e";
-        return entityManager.createQuery(jpql, entityClass).getResultList();
+        return new ArrayList<>(entityManager.values());
     }
 
     public T findById(ID id) {
-        return entityManager.find(entityClass, id);
+        return entityManager.get(id);
     }
 
-    public T update(Long id, T updatedEntity, String ignore) {
+    public T update(ID id, T updatedEntity, String ignore) {
 
-        entityManager.getTransaction().begin();
-
-        T entity = entityManager.find(entityClass, id);
+        T entity = entityManager.get(id);
 
         if(entity == null)
             //todo: treat error later
@@ -59,29 +57,42 @@ public abstract class ObjectRepository<T, ID> {
             }
         }
 
-        entityManager.getTransaction().commit();
-
         return entity;
     }
 
+    @SuppressWarnings("unchecked")
     public T save(T entity) {
+        try {
 
-        entityManager.getTransaction().begin();
-        entityManager.persist(entity);
-        entityManager.getTransaction().commit();
+            for (Field field : entity.getClass().getDeclaredFields()) {
 
-        return entity;
+                if (!field.isAnnotationPresent(javax.persistence.Id.class))
+                    continue;
+
+                field.setAccessible(true);
+                Object value = field.get(entity);
+
+                if (value == null)
+                    continue;
+
+                ID id = (ID) value; // O aviso ainda pode aparecer, mas o código é mais seguro
+                this.entityManager.put(id, entity);
+            }
+
+            throw new ApplicationException(Errors.ID_NOT_FOUND, null);
+
+        } catch (IllegalAccessException | IllegalArgumentException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void deleteById(ID id) {
 
-        T entity = entityManager.find(entityClass, id);
+        T entity = entityManager.get(id);
 
         if(entity == null)
             return;
 
-        entityManager.getTransaction().begin();
-        entityManager.remove(entity);
-        entityManager.getTransaction().commit();
+        entityManager.remove(id, entity);
     }
 }
