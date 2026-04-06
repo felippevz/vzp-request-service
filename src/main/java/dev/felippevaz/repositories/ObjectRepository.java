@@ -2,7 +2,6 @@ package dev.felippevaz.repositories;
 
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
-import dev.felippevaz.exceptions.GlobalException;
 
 import javax.persistence.EntityNotFoundException;
 import java.lang.reflect.Field;
