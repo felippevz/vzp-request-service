@@ -74,7 +74,10 @@ public abstract class ObjectRepository<T, ID> {
                     continue;
 
                 ID id = (ID) value;
+
                 this.entityManager.put(id, entity);
+
+                return entity;
             }
 
             throw new ApplicationException(Errors.ID_NOT_FOUND, null);
