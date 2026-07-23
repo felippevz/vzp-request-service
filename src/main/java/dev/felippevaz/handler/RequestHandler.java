@@ -95,7 +95,8 @@ public class RequestHandler implements HttpHandler {
 
             Object[] args = new Object[parameters.length];
 
-            args[0] = request;
+            if(parameters.length >= 1)
+                args[0] = request;
 
 
             for (int i = 1; i < parameters.length; i++)
