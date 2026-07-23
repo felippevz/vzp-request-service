@@ -59,7 +59,6 @@ public abstract class ObjectRepository<T, ID> {
         return entity;
     }
 
-    @SuppressWarnings("unchecked")
     public T save(T entity) {
         try {
 
@@ -74,7 +73,7 @@ public abstract class ObjectRepository<T, ID> {
                 if (value == null)
                     continue;
 
-                ID id = (ID) value; // O aviso ainda pode aparecer, mas o código é mais seguro
+                ID id = (ID) value;
                 this.entityManager.put(id, entity);
             }
 
