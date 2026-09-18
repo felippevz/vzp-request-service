@@ -6,11 +6,15 @@ import dev.felippevaz.exceptions.Errors;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Logger;
 
 public class HttpResponse {
+
+    private static final Logger LOGGER = Logger.getLogger(HttpResponse.class.getName());
 
     private int status = 200;
     private JsonObject body = new JsonObject();
@@ -65,6 +69,8 @@ public class HttpResponse {
             try {
 
                 request.getExchange().sendResponseHeaders(this.status, -1);
+                LOGGER.fine(() -> "Sent empty response, status=" + status);
+                this.sent = true;
                 return;
 
             } catch (IOException exception) {
@@ -78,13 +84,15 @@ public class HttpResponse {
 
         String json = HttpUtils.GSON.toJson(body);
 
-        byte[] bytes = json.getBytes();
+        byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
 
         try(OutputStream outputStream = request.getExchange().getResponseBody()) {
 
             request.getExchange().sendResponseHeaders(this.status, bytes.length);
 
             outputStream.write(bytes);
+
+            LOGGER.fine(() -> "Sent response, status=" + status + ", bytes=" + bytes.length);
 
         } catch (IOException exception) {
             throw new ApplicationException(Errors.RESPONSE_SEND_ERROR, exception);
