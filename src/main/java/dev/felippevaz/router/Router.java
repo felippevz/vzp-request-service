@@ -3,7 +3,6 @@ package dev.felippevaz.router;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class Router {
 
@@ -20,8 +19,7 @@ public class Router {
             if(!route.getMethod().equalsIgnoreCase(method))
                 continue;
 
-            Pattern pattern = Pattern.compile(route.getRegexPath());
-            Matcher matcher = pattern.matcher(path);
+            Matcher matcher = route.getPattern().matcher(path);
 
             if(matcher.matches()) {
 

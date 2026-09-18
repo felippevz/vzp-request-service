@@ -1,6 +1,7 @@
 package dev.felippevaz.router;
 
 import java.lang.reflect.Method;
+import java.util.regex.Pattern;
 
 public class Route {
 
@@ -9,6 +10,7 @@ public class Route {
     private final String path;
     private final Object controller;
     private final Method handler;
+    private final Pattern pattern;
 
 
     public Route(String method, String regexPath, String path, Object controller, Method handler) {
@@ -17,6 +19,7 @@ public class Route {
         this.path = path;
         this.controller = controller;
         this.handler = handler;
+        this.pattern = Pattern.compile(regexPath);
     }
 
     public String getMethod() {
@@ -37,5 +40,9 @@ public class Route {
 
     public String getRegexPath() {
         return this.regexPath;
+    }
+
+    public Pattern getPattern() {
+        return this.pattern;
     }
 }
