@@ -1,21 +1,26 @@
 package dev.felippevaz.repositories;
 
+import dev.felippevaz.annotations.Updatable;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 
-import javax.persistence.EntityNotFoundException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public abstract class ObjectRepository<T, ID> {
 
-    protected final HashMap<ID, T> entityManager;
+    private static final Logger LOGGER = Logger.getLogger(ObjectRepository.class.getName());
+
+    protected final Map<ID, T> entityManager;
 
     public ObjectRepository() {
-        this.entityManager = new HashMap<>();
+        this.entityManager = new ConcurrentHashMap<>();
     }
 
     public List<T> findAll() {
@@ -26,22 +31,26 @@ public abstract class ObjectRepository<T, ID> {
         return entityManager.get(id);
     }
 
-    public T update(ID id, T updatedEntity, String ignore) {
+    // Apenas campos anotados com @Updatable são copiados do payload do cliente para
+    // a entidade persistida. Isto evita "mass assignment": sem allow-list explícita,
+    // qualquer campo do objeto (ids, flags internas, etc.) poderia ser sobrescrito
+    // por um payload malicioso.
+    public T update(ID id, T updatedEntity) {
 
         T entity = entityManager.get(id);
 
         if(entity == null)
-            //todo: treat error later
-            throw new EntityNotFoundException();
+            throw new ApplicationException(Errors.ENTITY_NOT_FOUND, null);
 
         Class<?> classEntity = entity.getClass();
+        boolean anyFieldUpdated = false;
 
         for(Field field : classEntity.getDeclaredFields()) {
 
             if(Modifier.isStatic(field.getModifiers()))
                 continue;
 
-            if(field.getName().equals(ignore))
+            if(!field.isAnnotationPresent(Updatable.class))
                 continue;
 
             field.setAccessible(true);
@@ -50,11 +59,18 @@ public abstract class ObjectRepository<T, ID> {
 
                 Object value = field.get(updatedEntity);
                 field.set(entity, value);
+                anyFieldUpdated = true;
 
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException(e);
+            } catch (IllegalAccessException exception) {
+                LOGGER.log(Level.SEVERE, "Failed to copy field '" + field.getName()
+                        + "' during update of " + classEntity.getSimpleName(), exception);
+                throw new ApplicationException(Errors.FIELD_COPY_ERROR, exception);
             }
         }
+
+        if(!anyFieldUpdated)
+            LOGGER.warning(() -> "update() called on " + classEntity.getSimpleName()
+                    + " but no field is annotated with @Updatable - nothing was changed");
 
         return entity;
     }
@@ -82,8 +98,9 @@ public abstract class ObjectRepository<T, ID> {
 
             throw new ApplicationException(Errors.ID_NOT_FOUND, null);
 
-        } catch (IllegalAccessException | IllegalArgumentException e) {
-            throw new RuntimeException(e);
+        } catch (IllegalAccessException | IllegalArgumentException exception) {
+            LOGGER.log(Level.SEVERE, "Failed to save entity of type " + entity.getClass().getSimpleName(), exception);
+            throw new ApplicationException(Errors.FIELD_COPY_ERROR, exception);
         }
     }
 
