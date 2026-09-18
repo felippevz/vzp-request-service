@@ -13,15 +13,21 @@ import dev.felippevaz.router.RouteMatch;
 import dev.felippevaz.router.Router;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class RequestHandler implements HttpHandler {
+
+    private static final Logger LOGGER = Logger.getLogger(RequestHandler.class.getName());
 
     private final Router router;
 
@@ -63,6 +69,9 @@ public class RequestHandler implements HttpHandler {
                         Route route = new Route(httpMethods.get(entry), regexPath, fullPath, controller, method);
                         this.router.registerRoute(route);
 
+                        String logMethod = httpMethods.get(entry);
+                        LOGGER.fine(() -> "Registered route " + logMethod + " " + fullPath);
+
                     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException exception) {
                         throw new ApplicationException(Errors.VALUE_METHOD_CONTROLLER_ERROR, exception);
                     }
@@ -74,43 +83,107 @@ public class RequestHandler implements HttpHandler {
     @Override
     public void handle(HttpExchange exchange) throws IOException {
 
-        HttpRequest request = HttpAdapter.toRequest(exchange);
-
-        RouteMatch match = router.findRoute(request.getMethod(), request.getPath());
-
-        if (match == null) {
-
-            HttpUtils.send(Errors.ROUTE_NOT_FOUND, request);
-            return;
-        }
+        HttpRequest request = null;
 
         try {
 
-            Object controller = match.getController();
-            Method method = match.getMethod();
+            request = HttpAdapter.toRequest(exchange);
 
-            List<String> values = match.getParameters();
+            final HttpRequest currentRequest = request;
+            LOGGER.fine(() -> "Dispatching " + currentRequest.getMethod() + " " + currentRequest.getPath());
 
-            Parameter[] parameters = method.getParameters();
+            RouteMatch match = router.findRoute(request.getMethod(), request.getPath());
 
-            Object[] args = new Object[parameters.length];
+            if (match == null) {
+                LOGGER.fine(() -> "No route found for " + currentRequest.getMethod() + " " + currentRequest.getPath());
+                HttpUtils.send(Errors.ROUTE_NOT_FOUND, request);
+                return;
+            }
 
-            if(parameters.length >= 1)
-                args[0] = request;
-
-
-            for (int i = 1; i < parameters.length; i++)
-                args[i] = values.get(i-1);
-
-            if(method.getParameterCount() == 0)
-                method.invoke(controller, args);
-            else
-                method.invoke(controller, args);
+            invoke(match, request);
 
             HttpUtils.ok(request);
 
+        } catch (ApplicationException appException) {
+
+            LOGGER.log(Level.WARNING, "Application error handling " + exchange.getRequestMethod()
+                    + " " + exchange.getRequestURI(), appException);
+
+            sendSafely(request, exchange, appException.getError());
+
+        } catch (Throwable throwable) {
+
+            // Qualquer falha não prevista (NPE, erro de biblioteca, Error, etc.) cai aqui.
+            // Sem este catch-all a exceção escapa para o com.sun.net.httpserver, que a
+            // engole silenciosamente (log em nível TRACE, sem handler configurado) e
+            // apenas fecha a conexão sem responder ao cliente.
+            LOGGER.log(Level.SEVERE, "Unhandled error handling " + exchange.getRequestMethod()
+                    + " " + exchange.getRequestURI(), throwable);
+
+            sendSafely(request, exchange, Errors.INTERNAL_SERVER_ERROR);
+
+        } finally {
+            exchange.close();
+        }
+    }
+
+    private void invoke(RouteMatch match, HttpRequest request) {
+
+        Object controller = match.getController();
+        Method method = match.getMethod();
+
+        List<String> values = match.getParameters();
+        Parameter[] parameters = method.getParameters();
+        Object[] args = new Object[parameters.length];
+
+        if(parameters.length >= 1)
+            args[0] = request;
+
+        for (int i = 1; i < parameters.length; i++)
+            args[i] = values.get(i-1);
+
+        try {
+
+            method.invoke(controller, args);
+
         } catch (IllegalAccessException | InvocationTargetException exception) {
-            throw new ApplicationException(Errors.METHOD_INVOKE_ERROR, exception);
+
+            Throwable cause = exception;
+
+            if (exception instanceof InvocationTargetException && exception.getCause() != null)
+                cause = exception.getCause();
+
+            // Preserva o erro de domínio original (ex.: ENTITY_NOT_FOUND) em vez de
+            // mascarar tudo como um erro genérico de invocação.
+            if (cause instanceof ApplicationException)
+                throw (ApplicationException) cause;
+
+            throw new ApplicationException(Errors.METHOD_INVOKE_ERROR, cause);
+        }
+    }
+
+    private void sendSafely(HttpRequest request, HttpExchange exchange, Errors error) {
+        try {
+
+            if (request != null) {
+                HttpUtils.send(error, request);
+                return;
+            }
+
+            // A falha ocorreu antes do HttpRequest existir (ex.: parsing do exchange),
+            // então respondemos direto pelo HttpExchange.
+            byte[] body = ("{\"error\":\"" + error.getMessage() + "\"}").getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(error.getHttpCode(), body.length);
+
+            try (OutputStream outputStream = exchange.getResponseBody()) {
+                outputStream.write(body);
+            }
+
+        } catch (Throwable sendFailure) {
+            // Cliente provavelmente já desconectou. Apenas loga, nunca relança:
+            // isto evita um loop de erro-ao-tratar-erro.
+            LOGGER.log(Level.WARNING, "Failed to send error response to client (connection likely closed)", sendFailure);
         }
     }
 
