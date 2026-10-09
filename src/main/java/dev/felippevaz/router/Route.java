@@ -11,15 +11,20 @@ public class Route {
     private final Object controller;
     private final Method handler;
     private final Pattern pattern;
-
+    private final boolean publicRoute;
 
     public Route(String method, String regexPath, String path, Object controller, Method handler) {
+        this(method, regexPath, path, controller, handler, false);
+    }
+
+    public Route(String method, String regexPath, String path, Object controller, Method handler, boolean publicRoute) {
         this.method = method;
         this.regexPath = regexPath;
         this.path = path;
         this.controller = controller;
         this.handler = handler;
         this.pattern = Pattern.compile(regexPath);
+        this.publicRoute = publicRoute;
     }
 
     public String getMethod() {
@@ -44,5 +49,9 @@ public class Route {
 
     public Pattern getPattern() {
         return this.pattern;
+    }
+
+    public boolean isPublic() {
+        return this.publicRoute;
     }
 }

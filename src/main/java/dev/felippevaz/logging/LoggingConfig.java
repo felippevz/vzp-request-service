@@ -11,6 +11,10 @@ import java.util.logging.Logger;
 
 public final class LoggingConfig {
 
+    // Derivado da própria classe (e não "dev.felippevaz" fixo) para continuar
+    // funcionando quando o framework é relocado via shade dentro de outro jar.
+    private static final String ROOT_LOGGER = rootPackage();
+
     private static volatile boolean configured = false;
 
     private LoggingConfig() {
@@ -23,12 +27,11 @@ public final class LoggingConfig {
 
         Level level = resolveLevel();
 
-        Logger frameworkLogger = Logger.getLogger("dev.felippevaz");
+        Logger frameworkLogger = Logger.getLogger(ROOT_LOGGER);
         frameworkLogger.setUseParentHandlers(false);
         frameworkLogger.setLevel(level);
 
-        for (Handler handler : frameworkLogger.getHandlers())
-            frameworkLogger.removeHandler(handler);
+        removeHandlers(frameworkLogger);
 
         ConsoleHandler consoleHandler = new ConsoleHandler();
         consoleHandler.setLevel(level);
@@ -39,6 +42,33 @@ public final class LoggingConfig {
         configured = true;
     }
 
+    /**
+     * Envia todos os logs do framework para outro logger (ex.: o logger de um plugin
+     * Bukkit), em vez do console próprio. Pode ser chamado antes ou depois de
+     * criar o {@code RequestServer}.
+     */
+    public static synchronized void redirectTo(Logger target) {
+
+        Logger frameworkLogger = Logger.getLogger(ROOT_LOGGER);
+        frameworkLogger.setUseParentHandlers(false);
+        frameworkLogger.setLevel(resolveLevel());
+
+        removeHandlers(frameworkLogger);
+
+        frameworkLogger.addHandler(new ForwardingHandler(target));
+
+        configured = true;
+    }
+
+    public static String getRootLoggerName() {
+        return ROOT_LOGGER;
+    }
+
+    private static void removeHandlers(Logger logger) {
+        for (Handler handler : logger.getHandlers())
+            logger.removeHandler(handler);
+    }
+
     private static Level resolveLevel() {
 
         String levelName = System.getProperty("vzp.log.level", "INFO");
@@ -47,6 +77,39 @@ public final class LoggingConfig {
             return Level.parse(levelName.toUpperCase());
         } catch (IllegalArgumentException exception) {
             return Level.INFO;
+        }
+    }
+
+    private static String rootPackage() {
+
+        String name = LoggingConfig.class.getName();
+        String suffix = ".logging.LoggingConfig";
+
+        return name.endsWith(suffix) ? name.substring(0, name.length() - suffix.length()) : "dev.felippevaz";
+    }
+
+    private static class ForwardingHandler extends Handler {
+
+        private final Logger target;
+
+        ForwardingHandler(Logger target) {
+            this.target = target;
+        }
+
+        @Override
+        public void publish(LogRecord record) {
+            // target.log(record) (e não o handler do target) para que loggers que
+            // decoram a mensagem, como o PluginLogger do Bukkit, apliquem o prefixo.
+            if (target.isLoggable(record.getLevel()))
+                target.log(record);
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
         }
     }
 

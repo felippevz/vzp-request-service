@@ -11,6 +11,8 @@ import dev.felippevaz.http.HttpUtils;
 import dev.felippevaz.router.Route;
 import dev.felippevaz.router.RouteMatch;
 import dev.felippevaz.router.Router;
+import dev.felippevaz.security.Authenticator;
+import dev.felippevaz.security.IpAllowList;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -18,21 +20,43 @@ import java.lang.annotation.Annotation;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class RequestHandler implements HttpHandler {
 
     private static final Logger LOGGER = Logger.getLogger(RequestHandler.class.getName());
 
+    private static final Pattern PATH_PARAMETER = Pattern.compile("\\{[^/]+?}");
+
     private final Router router;
+    private final IpAllowList allowList;
+
+    private volatile Authenticator authenticator;
+    private volatile long maxBodyBytes = HttpAdapter.DEFAULT_MAX_BODY_BYTES;
 
     public RequestHandler(Router router) {
+        this(router, new IpAllowList());
+    }
+
+    public RequestHandler(Router router, IpAllowList allowList) {
         this.router = router;
+        this.allowList = allowList;
+    }
+
+    public void setAuthenticator(Authenticator authenticator) {
+        this.authenticator = authenticator;
+    }
+
+    public void setMaxBodyBytes(long maxBodyBytes) {
+        this.maxBodyBytes = maxBodyBytes;
     }
 
     public void registerController(Object controller) {
@@ -43,8 +67,9 @@ public class RequestHandler implements HttpHandler {
             return;
 
         String basePath = controllerClass.getAnnotation(Controller.class).value();
+        boolean publicController = controllerClass.isAnnotationPresent(Public.class);
 
-        Map<Class<? extends Annotation>, String> httpMethods = new HashMap<>();
+        Map<Class<? extends Annotation>, String> httpMethods = new LinkedHashMap<>();
 
         httpMethods.put(Get.class, "GET");
         httpMethods.put(Post.class, "POST");
@@ -65,12 +90,15 @@ public class RequestHandler implements HttpHandler {
                         String value = (String) entry.getMethod("value").invoke(annotation);
                         String fullPath = basePath + value;
                         String regexPath = createRegexPath(fullPath);
+                        boolean publicRoute = publicController || method.isAnnotationPresent(Public.class);
 
-                        Route route = new Route(httpMethods.get(entry), regexPath, fullPath, controller, method);
+                        method.setAccessible(true);
+
+                        Route route = new Route(httpMethods.get(entry), regexPath, fullPath, controller, method, publicRoute);
                         this.router.registerRoute(route);
 
                         String logMethod = httpMethods.get(entry);
-                        LOGGER.fine(() -> "Registered route " + logMethod + " " + fullPath);
+                        LOGGER.fine(() -> "Registered route " + logMethod + " " + fullPath + (publicRoute ? " (public)" : ""));
 
                     } catch (NoSuchMethodException | IllegalAccessException | InvocationTargetException exception) {
                         throw new ApplicationException(Errors.VALUE_METHOD_CONTROLLER_ERROR, exception);
@@ -87,7 +115,18 @@ public class RequestHandler implements HttpHandler {
 
         try {
 
-            request = HttpAdapter.toRequest(exchange);
+            // A allowlist é checada antes de ler o corpo: um IP recusado não
+            // consome memória nem chega perto de um controller.
+            InetAddress remote = exchange.getRemoteAddress() != null ? exchange.getRemoteAddress().getAddress() : null;
+
+            if (!allowList.isAllowed(remote)) {
+                LOGGER.warning(() -> "Rejected " + exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath()
+                        + " from " + (remote != null ? remote.getHostAddress() : "unknown") + ": IP not allowed");
+                sendSafely(null, exchange, Errors.FORBIDDEN);
+                return;
+            }
+
+            request = HttpAdapter.toRequest(exchange, maxBodyBytes);
 
             final HttpRequest currentRequest = request;
             LOGGER.fine(() -> "Dispatching " + currentRequest.getMethod() + " " + currentRequest.getPath());
@@ -100,14 +139,27 @@ public class RequestHandler implements HttpHandler {
                 return;
             }
 
+            Authenticator currentAuthenticator = this.authenticator;
+
+            if (currentAuthenticator != null && !match.isPublic())
+                currentAuthenticator.authenticate(request);
+
             invoke(match, request);
 
+            // Se o controller não respondeu nada, devolve 200 vazio. Se já respondeu,
+            // isto é ignorado (HttpResponse só envia uma vez por requisição).
             HttpUtils.ok(request);
 
         } catch (ApplicationException appException) {
 
-            LOGGER.log(Level.WARNING, "Application error handling " + exchange.getRequestMethod()
-                    + " " + exchange.getRequestURI(), appException);
+            String description = exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath();
+
+            // Erros 4xx são esperados (cliente errado, token inválido, rota inexistente):
+            // logar stacktrace para cada um só gera ruído.
+            if (appException.getHttpCode() < 500)
+                LOGGER.info(() -> "Client error handling " + description + ": " + appException.getMessage());
+            else
+                LOGGER.log(Level.WARNING, "Application error handling " + description, appException);
 
             sendSafely(request, exchange, appException.getError());
 
@@ -118,7 +170,7 @@ public class RequestHandler implements HttpHandler {
             // engole silenciosamente (log em nível TRACE, sem handler configurado) e
             // apenas fecha a conexão sem responder ao cliente.
             LOGGER.log(Level.SEVERE, "Unhandled error handling " + exchange.getRequestMethod()
-                    + " " + exchange.getRequestURI(), throwable);
+                    + " " + exchange.getRequestURI().getPath(), throwable);
 
             sendSafely(request, exchange, Errors.INTERNAL_SERVER_ERROR);
 
@@ -172,7 +224,8 @@ public class RequestHandler implements HttpHandler {
 
             // A falha ocorreu antes do HttpRequest existir (ex.: parsing do exchange),
             // então respondemos direto pelo HttpExchange.
-            byte[] body = ("{\"error\":\"" + error.getMessage() + "\"}").getBytes(StandardCharsets.UTF_8);
+            byte[] body = ("{\"error\":\"" + error.getMessage() + "\",\"code\":\"" + error.getInternalCode() + "\"}")
+                    .getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(error.getHttpCode(), body.length);
 
@@ -187,7 +240,21 @@ public class RequestHandler implements HttpHandler {
         }
     }
 
+    // Trechos literais do caminho são escapados ("." não vira "qualquer caractere");
+    // só os segmentos {param} viram grupos de captura.
     private String createRegexPath(String path) {
-        return path.replaceAll("\\{[^/]+}", "([^/]+)") + "$";
+
+        Matcher matcher = PATH_PARAMETER.matcher(path);
+        StringBuilder regex = new StringBuilder();
+        int last = 0;
+
+        while (matcher.find()) {
+            regex.append(Pattern.quote(path.substring(last, matcher.start()))).append("([^/]+)");
+            last = matcher.end();
+        }
+
+        regex.append(Pattern.quote(path.substring(last)));
+
+        return regex.toString();
     }
 }

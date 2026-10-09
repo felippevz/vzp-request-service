@@ -1,21 +1,17 @@
 package dev.felippevaz.repositories;
 
-import dev.felippevaz.annotations.Updatable;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 
-import java.lang.reflect.Field;
-import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
-public abstract class ObjectRepository<T, ID> {
-
-    private static final Logger LOGGER = Logger.getLogger(ObjectRepository.class.getName());
+/**
+ * Repositório em memória ({@link ConcurrentHashMap}). Os dados não sobrevivem a um restart.
+ */
+public abstract class ObjectRepository<T, ID> implements Repository<T, ID> {
 
     protected final Map<ID, T> entityManager;
 
@@ -23,94 +19,54 @@ public abstract class ObjectRepository<T, ID> {
         this.entityManager = new ConcurrentHashMap<>();
     }
 
+    @Override
     public List<T> findAll() {
         return new ArrayList<>(entityManager.values());
     }
 
+    @Override
     public T findById(ID id) {
-        return entityManager.get(id);
+        return id != null ? entityManager.get(id) : null;
     }
 
-    // Apenas campos anotados com @Updatable são copiados do payload do cliente para
-    // a entidade persistida. Isto evita "mass assignment": sem allow-list explícita,
-    // qualquer campo do objeto (ids, flags internas, etc.) poderia ser sobrescrito
-    // por um payload malicioso.
+    @Override
+    public boolean existsById(ID id) {
+        return id != null && entityManager.containsKey(id);
+    }
+
+    @Override
+    public long count() {
+        return entityManager.size();
+    }
+
+    @Override
     public T update(ID id, T updatedEntity) {
 
-        T entity = entityManager.get(id);
+        T entity = findById(id);
 
         if(entity == null)
             throw new ApplicationException(Errors.ENTITY_NOT_FOUND, null);
 
-        Class<?> classEntity = entity.getClass();
-        boolean anyFieldUpdated = false;
-
-        for(Field field : classEntity.getDeclaredFields()) {
-
-            if(Modifier.isStatic(field.getModifiers()))
-                continue;
-
-            if(!field.isAnnotationPresent(Updatable.class))
-                continue;
-
-            field.setAccessible(true);
-
-            try {
-
-                Object value = field.get(updatedEntity);
-                field.set(entity, value);
-                anyFieldUpdated = true;
-
-            } catch (IllegalAccessException exception) {
-                LOGGER.log(Level.SEVERE, "Failed to copy field '" + field.getName()
-                        + "' during update of " + classEntity.getSimpleName(), exception);
-                throw new ApplicationException(Errors.FIELD_COPY_ERROR, exception);
-            }
-        }
-
-        if(!anyFieldUpdated)
-            LOGGER.warning(() -> "update() called on " + classEntity.getSimpleName()
-                    + " but no field is annotated with @Updatable - nothing was changed");
+        Entities.copyUpdatableFields(updatedEntity, entity);
 
         return entity;
     }
 
+    @Override
+    @SuppressWarnings("unchecked")
     public T save(T entity) {
-        try {
 
-            for (Field field : entity.getClass().getDeclaredFields()) {
+        ID id = (ID) Entities.extractId(entity);
 
-                if (!field.isAnnotationPresent(javax.persistence.Id.class))
-                    continue;
+        this.entityManager.put(id, entity);
 
-                field.setAccessible(true);
-                Object value = field.get(entity);
-
-                if (value == null)
-                    continue;
-
-                ID id = (ID) value;
-
-                this.entityManager.put(id, entity);
-
-                return entity;
-            }
-
-            throw new ApplicationException(Errors.ID_NOT_FOUND, null);
-
-        } catch (IllegalAccessException | IllegalArgumentException exception) {
-            LOGGER.log(Level.SEVERE, "Failed to save entity of type " + entity.getClass().getSimpleName(), exception);
-            throw new ApplicationException(Errors.FIELD_COPY_ERROR, exception);
-        }
+        return entity;
     }
 
+    @Override
     public void deleteById(ID id) {
 
-        T entity = entityManager.get(id);
-
-        if(entity == null)
-            return;
-
-        entityManager.remove(id, entity);
+        if (id != null)
+            entityManager.remove(id);
     }
 }

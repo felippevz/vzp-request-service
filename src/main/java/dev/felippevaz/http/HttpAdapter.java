@@ -4,11 +4,10 @@ import com.sun.net.httpserver.HttpExchange;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.Reader;
-import java.nio.charset.StandardCharsets;
+import java.net.InetAddress;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Logger;
@@ -17,16 +16,20 @@ public class HttpAdapter {
 
     private static final Logger LOGGER = Logger.getLogger(HttpAdapter.class.getName());
 
-    private static volatile long maxBodyBytes = 1_048_576; // 1MB default
+    public static final long DEFAULT_MAX_BODY_BYTES = 1_048_576; // 1MB
 
-    public static void setMaxBodyBytes(long maxBodyBytes) {
-        HttpAdapter.maxBodyBytes = maxBodyBytes;
+    private HttpAdapter() {
     }
 
     public static HttpRequest toRequest(HttpExchange exchange) throws IOException {
+        return toRequest(exchange, DEFAULT_MAX_BODY_BYTES);
+    }
+
+    public static HttpRequest toRequest(HttpExchange exchange, long maxBodyBytes) throws IOException {
 
         String method = exchange.getRequestMethod();
         String path = exchange.getRequestURI().getPath();
+        String query = exchange.getRequestURI().getRawQuery();
 
         Map<String, String> headers = new HashMap<>();
         exchange.getRequestHeaders().forEach((key, values) -> {
@@ -42,11 +45,15 @@ public class HttpAdapter {
             throw new ApplicationException(Errors.PAYLOAD_TOO_LARGE, null);
         }
 
-        String body = readBody(exchange.getRequestBody(), method, path);
+        byte[] body = readBody(exchange.getRequestBody(), method, path, maxBodyBytes);
 
-        LOGGER.fine(() -> "Parsed " + method + " " + path + " (" + body.length() + " chars body)");
+        InetAddress remoteAddress = exchange.getRemoteAddress() != null
+                ? exchange.getRemoteAddress().getAddress()
+                : null;
 
-        return new HttpRequest(method, path, headers, body, exchange);
+        LOGGER.fine(() -> "Parsed " + method + " " + path + " (" + body.length + " bytes body)");
+
+        return new HttpRequest(method, path, query, headers, body, remoteAddress, exchange);
     }
 
     private static long parseContentLength(String value) {
@@ -61,18 +68,18 @@ public class HttpAdapter {
         }
     }
 
-    private static String readBody(InputStream inputStream, String method, String path) throws IOException {
+    private static byte[] readBody(InputStream inputStream, String method, String path, long maxBodyBytes) throws IOException {
 
-        StringBuilder sb = new StringBuilder();
-        char[] buffer = new char[4096];
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        byte[] buffer = new byte[4096];
         long total = 0;
 
         // Content-Length pode estar ausente (chunked) ou ser forjado, então o limite
-        // real é imposto aqui, byte a byte, e não apenas no header declarado acima.
-        try (Reader reader = new InputStreamReader(inputStream, StandardCharsets.UTF_8)) {
+        // real é imposto aqui, durante a leitura, e não apenas no header declarado acima.
+        try (InputStream input = inputStream) {
 
             int n;
-            while ((n = reader.read(buffer)) != -1) {
+            while ((n = input.read(buffer)) != -1) {
 
                 total += n;
 
@@ -82,10 +89,10 @@ public class HttpAdapter {
                     throw new ApplicationException(Errors.PAYLOAD_TOO_LARGE, null);
                 }
 
-                sb.append(buffer, 0, n);
+                output.write(buffer, 0, n);
             }
         }
 
-        return sb.toString();
+        return output.toByteArray();
     }
 }

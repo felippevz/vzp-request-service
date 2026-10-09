@@ -2,11 +2,12 @@ package dev.felippevaz.router;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 
 public class Router {
 
-    private final List<Route> routes = new ArrayList<>();
+    private final List<Route> routes = new CopyOnWriteArrayList<>();
 
     public void registerRoute(Route route) {
         this.routes.add(route);
@@ -28,7 +29,7 @@ public class Router {
                 for (int i = 1; i <= matcher.groupCount(); i++)
                     parameters.add(matcher.group(i));
 
-                return new RouteMatch(route.getHandler(), route.getController(), parameters);
+                return new RouteMatch(route.getHandler(), route.getController(), parameters, route.isPublic());
             }
         }
 

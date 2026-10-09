@@ -55,22 +55,32 @@ public class HttpResponse {
         return this;
     }
 
-    public HttpResponse addListObjects(String property, List<Object> objects) {
+    public HttpResponse addListObjects(String property, List<?> objects) {
         this.body.add(property, HttpUtils.GSON.toJsonTree(objects));
         return this;
     }
 
+    /**
+     * Envia a resposta. Só a primeira resposta de uma requisição é enviada:
+     * chamadas seguintes (nesta ou em outra instância de HttpResponse) são ignoradas.
+     */
     public void send(HttpRequest request) {
 
-        if(this.sent)
+        if (this.sent || request.isResponded())
             return;
 
-        if(body.isEmpty()) {
+        this.sent = true;
+        request.markResponded();
+
+        this.headers.forEach((k, v) ->
+                request.getExchange().getResponseHeaders().add(k, v)
+        );
+
+        if (body == null || body.size() == 0) {
             try {
 
                 request.getExchange().sendResponseHeaders(this.status, -1);
                 LOGGER.fine(() -> "Sent empty response, status=" + status);
-                this.sent = true;
                 return;
 
             } catch (IOException exception) {
@@ -78,26 +88,22 @@ public class HttpResponse {
             }
         }
 
-        this.headers.forEach((k, v) ->
-                request.getExchange().getResponseHeaders().add(k, v)
-        );
-
         String json = HttpUtils.GSON.toJson(body);
 
         byte[] bytes = json.getBytes(StandardCharsets.UTF_8);
 
-        try(OutputStream outputStream = request.getExchange().getResponseBody()) {
+        try {
 
             request.getExchange().sendResponseHeaders(this.status, bytes.length);
 
-            outputStream.write(bytes);
+            try (OutputStream outputStream = request.getExchange().getResponseBody()) {
+                outputStream.write(bytes);
+            }
 
             LOGGER.fine(() -> "Sent response, status=" + status + ", bytes=" + bytes.length);
 
         } catch (IOException exception) {
             throw new ApplicationException(Errors.RESPONSE_SEND_ERROR, exception);
         }
-
-        sent = true;
     }
 }

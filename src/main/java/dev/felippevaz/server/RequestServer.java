@@ -4,15 +4,17 @@ import com.sun.net.httpserver.HttpServer;
 import dev.felippevaz.exceptions.Errors;
 import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.handler.RequestHandler;
-import dev.felippevaz.http.HttpAdapter;
 import dev.felippevaz.logging.LoggingConfig;
 import dev.felippevaz.router.Router;
+import dev.felippevaz.security.Authenticator;
+import dev.felippevaz.security.IpAllowList;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionHandler;
 import java.util.concurrent.ThreadFactory;
@@ -28,8 +30,14 @@ public class RequestServer {
 
     private final int port;
     private final RequestHandler requestHandler;
+    private final IpAllowList allowList = new IpAllowList();
+
     private Executor executor;
+    private boolean ownsExecutor = true;
     private int backLog;
+    private String bindAddress;
+
+    private HttpServer server;
 
     // Timeouts nativos do com.sun.net.httpserver (idle/leitura/escrita). Sem eles,
     // um cliente lento (ou um ataque Slowloris) pode prender uma worker thread
@@ -42,7 +50,7 @@ public class RequestServer {
         LoggingConfig.configure();
         this.port = port;
         this.backLog = 0;
-        this.requestHandler = new RequestHandler(new Router());
+        this.requestHandler = new RequestHandler(new Router(), this.allowList);
         this.executor = createDefaultExecutor();
     }
 
@@ -81,31 +89,79 @@ public class RequestServer {
         this.requestHandler.registerController(controller);
     }
 
-    public void start() {
+    public synchronized void start() {
+
+        if (this.server != null) {
+            LOGGER.warning("start() called but the HttpServer is already running on port " + getPort());
+            return;
+        }
 
         Instant started = Instant.now();
 
         configureNativeServerTimeouts();
 
+        // O executor padrão é desligado no stop(); se o servidor for iniciado de
+        // novo (ex.: reload de plugin), cria um pool novo.
+        if (ownsExecutor && executor instanceof ExecutorService && ((ExecutorService) executor).isShutdown())
+            this.executor = createDefaultExecutor();
+
         try {
 
-            HttpServer server = HttpServer.create(new InetSocketAddress(this.port), this.backLog);
+            InetSocketAddress address = bindAddress != null
+                    ? new InetSocketAddress(bindAddress, this.port)
+                    : new InetSocketAddress(this.port);
 
-            server.setExecutor(this.executor);
-            server.createContext("/", this.requestHandler);
+            HttpServer httpServer = HttpServer.create(address, this.backLog);
 
-            server.start();
+            httpServer.setExecutor(this.executor);
+            httpServer.createContext("/", this.requestHandler);
 
-            Instant finished = Instant.now();
-            long duration = Duration.between(started, finished).toMillis();
+            httpServer.start();
 
-            LOGGER.info("HttpServer started on port " + this.port);
+            this.server = httpServer;
+
+            long duration = Duration.between(started, Instant.now()).toMillis();
+
+            LOGGER.info("HttpServer started on " + (bindAddress != null ? bindAddress : "*") + ":" + getPort()
+                    + (allowList.isEmpty() ? "" : " (IP allowlist enabled)"));
             LOGGER.info("Time for initialization: " + duration + "ms");
 
         } catch (IOException exception) {
             LOGGER.log(Level.SEVERE, "Failed to start HTTP server on port " + this.port, exception);
             throw new ApplicationException(Errors.SERVER_INIT_ERROR, exception);
         }
+    }
+
+    /** Para o servidor imediatamente. Equivalente a {@code stop(0)}. */
+    public void stop() {
+        stop(0);
+    }
+
+    /**
+     * Para o servidor, liberando a porta, e desliga o thread pool padrão.
+     * Um executor passado via {@link #setExecutor(Executor)} não é desligado:
+     * quem o criou é responsável por ele.
+     *
+     * @param delaySeconds tempo máximo de espera para as requisições em andamento terminarem.
+     */
+    public synchronized void stop(int delaySeconds) {
+
+        if (this.server == null)
+            return;
+
+        int boundPort = getPort();
+
+        this.server.stop(Math.max(0, delaySeconds));
+        this.server = null;
+
+        if (ownsExecutor && executor instanceof ExecutorService)
+            ((ExecutorService) executor).shutdownNow();
+
+        LOGGER.info("HttpServer stopped on port " + boundPort);
+    }
+
+    public synchronized boolean isRunning() {
+        return this.server != null;
     }
 
     // Propriedades específicas da implementação de referência do JDK
@@ -122,10 +178,35 @@ public class RequestServer {
 
     public void setExecutor(Executor executor) {
         this.executor = executor;
+        this.ownsExecutor = false;
+    }
+
+    /**
+     * Interface de rede onde o servidor escuta (ex.: "127.0.0.1", "0.0.0.0").
+     * Padrão: todas as interfaces.
+     */
+    public void setBindAddress(String bindAddress) {
+        this.bindAddress = bindAddress;
+    }
+
+    /**
+     * Restringe as requisições aos IPs/blocos CIDR informados. Pode ser chamado
+     * várias vezes (as regras se acumulam). Sem nenhuma regra, todos os IPs são aceitos.
+     *
+     * @throws IllegalArgumentException se alguma regra não for um IP/CIDR válido.
+     */
+    public void allowFrom(String... rules) {
+        for (String rule : rules)
+            this.allowList.add(rule);
+    }
+
+    /** Hook de autenticação executado antes de toda rota não marcada com {@code @Public}. */
+    public void setAuthenticator(Authenticator authenticator) {
+        this.requestHandler.setAuthenticator(authenticator);
     }
 
     public void setMaxRequestBodyBytes(long maxBodyBytes) {
-        HttpAdapter.setMaxBodyBytes(maxBodyBytes);
+        this.requestHandler.setMaxBodyBytes(maxBodyBytes);
     }
 
     public void setIdleIntervalSeconds(int idleIntervalSeconds) {
@@ -140,7 +221,8 @@ public class RequestServer {
         this.maxResponseSeconds = maxResponseSeconds;
     }
 
-    public int getPort() {
-        return this.port;
+    /** Porta configurada, ou a porta real quando o servidor está rodando (útil com porta 0). */
+    public synchronized int getPort() {
+        return this.server != null ? this.server.getAddress().getPort() : this.port;
     }
 }

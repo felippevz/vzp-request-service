@@ -23,7 +23,8 @@ public class HttpUtils {
         HttpResponse response = new HttpResponse();
 
         response.setStatus(error.getHttpCode())
-                .addFieldBody("error", error.getMessage());
+                .addFieldBody("error", error.getMessage())
+                .addFieldBody("code", error.getInternalCode());
 
         response.send(request);
     }
