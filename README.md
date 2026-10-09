@@ -304,6 +304,12 @@ HttpUtils.ok(request);                       // 200, corpo vazio
 HttpUtils.send(Errors.ENTITY_NOT_FOUND, request); // status/mensagem definidos pelo Errors
 ```
 
+Para respostas que não são JSON (HTML, CSS, JS...):
+
+```java
+HttpUtils.sendRaw(request, 200, "text/html; charset=utf-8", html.getBytes(StandardCharsets.UTF_8));
+```
+
 Respostas de erro têm o formato `{"timestamp": ..., "error": "Entity not found", "code": "ERROR_1006"}`.
 
 ---

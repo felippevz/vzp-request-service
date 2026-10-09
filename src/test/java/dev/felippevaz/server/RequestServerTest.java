@@ -10,6 +10,7 @@ import dev.felippevaz.exceptions.ApplicationException;
 import dev.felippevaz.exceptions.Errors;
 import dev.felippevaz.http.HttpRequest;
 import dev.felippevaz.http.HttpResponse;
+import dev.felippevaz.http.HttpUtils;
 import dev.felippevaz.logging.LoggingConfig;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -87,6 +88,12 @@ class RequestServerTest {
         @Get("/silent")
         public void silent(HttpRequest request) {
             // Não responde nada: o handler devolve 200 vazio.
+        }
+
+        @Get("/page")
+        public void page(HttpRequest request) {
+            HttpUtils.sendRaw(request, 200, "text/html; charset=utf-8",
+                    "<h1>Olá</h1>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
         }
 
         @Get("/file.json")
@@ -227,6 +234,15 @@ class RequestServerTest {
     }
 
     @Test
+    void rawResponsesKeepTheirContentType() {
+        RestResponse response = client.get("/api/page");
+
+        assertEquals(200, response.getStatus());
+        assertEquals("<h1>Olá</h1>", response.getBody());
+        assertTrue(response.getHeader("Content-Type").startsWith("text/html"));
+    }
+
+    @Test
     void unknownRouteIs404() {
         RestResponse response = client.get("/api/nothing/here/at/all");
 
@@ -282,6 +298,7 @@ class RequestServerTest {
         client.get("/api/items/1");
         client.post("/api/items", "{\"name\":\"x\",\"amount\":1}");
         client.get("/api/silent");
+        client.get("/api/page");
         anonymousClient.get("/public/ping");
 
         assertEquals(Collections.emptyList(), LOGS.messagesAtOrAbove(Level.WARNING));
